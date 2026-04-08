@@ -84,7 +84,7 @@ uv run python -m server.server
     "barnacle": {
       "command": "uv",
       "args": ["run", "python", "-m", "server.server"],
-      "cwd": "C:/workspace/barnacle"
+      "cwd": "PATH_TO_BARNACLE" // 替换为实际路径
     }
   }
 }
@@ -152,7 +152,7 @@ Barnacle 使用基于困惑度的智能内容检测算法：
 
 1. **语义标签优先**: 自动识别 `<article>`, `<main>` 等语义标签
 2. **模式匹配**: 通过 class/id 属性匹配常见内容区域命名
-3. **困惑度评分**: 使用 ONNX 模型计算文本困惑度，高困惑度内容更可能是正文
+3. **困惑度评分**: 使用 ONNX 模型计算文本困惑度，低困惑度内容更可能是正文
 4. **噪声过滤**: 自动移除导航、侧边栏、广告等噪声区域
 
 ## 开发
