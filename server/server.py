@@ -12,6 +12,7 @@ Features:
 - ONNX model loaded asynchronously (non-blocking startup)
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -86,8 +87,22 @@ async def fetch(
 
     try:
         bridge = await get_bridge()
-        if not bridge.is_connected:
+        # Start bridge server if not running
+        if not bridge._running:
             await bridge.start()
+        
+        if not bridge.is_connected:
+            # Wait for extension to connect (extension polls every 1 second)
+            await asyncio.sleep(2.0)
+            if not bridge.is_connected:
+                return ResponseResult(
+                    success=False,
+                    url=url,
+                    status=0,
+                    content=[],
+                    selector=None,
+                    error="No extension connected to ws://localhost:9877",
+                )
 
         options = {
             "timeout": timeout,

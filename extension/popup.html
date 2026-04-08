@@ -212,10 +212,6 @@
         <span class="status-label">Server</span>
         <span class="status-value" id="serverUrl">-</span>
       </div>
-      <div class="status-row">
-        <span class="status-label">Connection</span>
-        <span class="status-value" id="wsStatus">-</span>
-      </div>
       <div class="status-row" id="taskRow" style="display: none;">
         <span class="status-label">Current Task</span>
         <span class="status-value" id="currentTask">-</span>
@@ -225,8 +221,8 @@
     <div class="config-section">
       <h2>Configuration</h2>
       <div class="input-group">
-        <label for="serverUrlInput">Server URL</label>
-        <input type="text" id="serverUrlInput" placeholder="http://localhost:9876">
+        <label for="wsUrlInput">WebSocket URL</label>
+        <input type="text" id="wsUrlInput" placeholder="ws://localhost:9877">
       </div>
       <div class="button-group">
         <button class="btn-secondary" id="saveConfig">Save</button>

@@ -3,21 +3,24 @@
  *
  * Handles communication with Barnacle Python server via WebSocket,
  * manages tabs, and extracts page content.
+ *
+ * Auto-connects on startup, polling every second until connected,
+ * then maintains connection with heartbeat every second.
  */
 
 // Configuration
 const DEFAULT_CONFIG = {
-  serverUrl: 'http://localhost:9876',
   wsUrl: 'ws://localhost:9877',
   taskTimeout: 10000,
 };
 
 let config = { ...DEFAULT_CONFIG };
 let ws = null;
-let isRunning = false;
-let reconnectTimer = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_DELAY = 30000; // 30 seconds max
+let isRunning = false;        // Whether polling/connection is active
+let connectTimer = null;      // Timer for connection polling (1s interval)
+let heartbeatTimer = null;    // Timer for heartbeat (1s interval)
+let heartbeatFailures = 0;    // Count of consecutive heartbeat failures
+const MAX_HEARTBEAT_FAILURES = 3;  // Max failures before returning to polling mode
 
 // Task queue
 let pendingTasks = new Map();
@@ -33,42 +36,40 @@ async function init() {
     config = { ...DEFAULT_CONFIG, ...stored.config };
   }
 
-  console.log('[Barnacle] Extension initialized, server:', config.serverUrl);
+  console.log('[Barnacle] Extension initialized, WebSocket:', getWsUrl());
 }
 
 /**
- * Derive WebSocket URL from HTTP server URL
+ * Get WebSocket URL
  */
 function getWsUrl() {
-  if (config.wsUrl) {
-    return config.wsUrl;
-  }
-  // Auto-convert http:// to ws://
-  return config.serverUrl.replace(/^http/, 'ws');
+  return config.wsUrl || DEFAULT_CONFIG.wsUrl;
 }
 
 /**
- * Start WebSocket connection to Barnacle server
+ * Start polling for WebSocket connection
+ * Attempts to connect every second until successful
  */
 async function startPolling() {
   if (isRunning) return;
 
   isRunning = true;
-  reconnectAttempts = 0;
-  console.log('[Barnacle] Connecting to WebSocket server:', getWsUrl());
+  console.log('[Barnacle] Starting connection polling mode');
 
-  // Update badge
-  chrome.action.setBadgeText({ text: 'ON' });
-  chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
-
-  connectWebSocket();
+  // Start polling every second
+  pollConnect();
 }
 
 /**
- * Establish WebSocket connection
+ * Poll for WebSocket connection every second
  */
-function connectWebSocket() {
+function pollConnect() {
   if (!isRunning) return;
+
+  console.log('[Barnacle] Attempting to connect to:', getWsUrl());
+
+  // Stop heartbeat if running
+  stopHeartbeat();
 
   // Close existing connection if any
   if (ws) {
@@ -81,15 +82,20 @@ function connectWebSocket() {
 
     ws.onopen = () => {
       console.log('[Barnacle] WebSocket connected');
-      reconnectAttempts = 0;
+      heartbeatFailures = 0;
+
       // Notify server that extension is ready
       ws.send(JSON.stringify({ type: 'ready' }));
+
+      // Stop polling and start heartbeat
+      stopPollingTimer();
+      startHeartbeat();
     };
 
     ws.onmessage = async (event) => {
       try {
         const message = JSON.parse(event.data);
-        
+
         if (message.type === 'task' && message.task) {
           console.log('[Barnacle] Received task:', message.task.id, 'URL:', message.task.url);
           if (!currentTask) {
@@ -99,6 +105,9 @@ function connectWebSocket() {
             // Queue task if one is already running
             pendingTasks.set(message.task.id, message.task);
           }
+        } else if (message.type === 'pong') {
+          // Heartbeat response - reset failure count
+          heartbeatFailures = 0;
         } else if (message.type === 'ping') {
           // Respond to ping for keepalive
           ws.send(JSON.stringify({ type: 'pong' }));
@@ -111,10 +120,17 @@ function connectWebSocket() {
     ws.onclose = (event) => {
       console.log('[Barnacle] WebSocket closed:', event.code, event.reason);
       ws = null;
-      
+
       if (isRunning) {
-        // Attempt to reconnect with exponential backoff
-        scheduleReconnect();
+        // Schedule next poll attempt in 1 second (if no timer already running)
+        if (!connectTimer) {
+          connectTimer = setTimeout(() => {
+            connectTimer = null;
+            if (isRunning) {
+              pollConnect();
+            }
+          }, 1000);
+        }
       }
     };
 
@@ -124,48 +140,109 @@ function connectWebSocket() {
 
   } catch (error) {
     console.error('[Barnacle] Failed to create WebSocket connection:', error);
-    scheduleReconnect();
+
+    // Schedule next poll attempt in 1 second
+    if (!connectTimer) {
+      connectTimer = setTimeout(() => {
+        connectTimer = null;
+        if (isRunning) {
+          pollConnect();
+        }
+      }, 1000);
+    }
   }
 }
 
 /**
- * Schedule reconnection with exponential backoff
+ * Return to polling mode after connection lost (e.g., heartbeat failures)
  */
-function scheduleReconnect() {
-  if (reconnectTimer || !isRunning) return;
+function returnToPolling() {
+  stopHeartbeat();
+  heartbeatFailures = 0;
 
-  reconnectAttempts++;
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
-  
-  console.log(`[Barnacle] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
-  
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    connectWebSocket();
-  }, delay);
+  // Close WebSocket if exists - onclose will schedule next poll
+  if (ws) {
+    ws.close();
+    ws = null;
+  } else {
+    // No WebSocket, start polling directly
+    pollConnect();
+  }
 }
 
 /**
- * Stop WebSocket connection
+ * Start heartbeat - send ping every second
+ */
+function startHeartbeat() {
+  if (heartbeatTimer) return;
+
+  console.log('[Barnacle] Starting heartbeat');
+
+  heartbeatTimer = setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      heartbeatFailures++;
+      console.log('[Barnacle] Heartbeat failed - connection not open, failures:', heartbeatFailures);
+
+      if (heartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+        console.log('[Barnacle] Max heartbeat failures reached, returning to polling mode');
+        returnToPolling();
+      }
+      return;
+    }
+
+    try {
+      ws.send(JSON.stringify({ type: 'ping' }));
+      heartbeatFailures = 0;  // Reset on successful send
+    } catch (error) {
+      heartbeatFailures++;
+      console.error('[Barnacle] Heartbeat send error:', error, 'failures:', heartbeatFailures);
+
+      if (heartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+        console.log('[Barnacle] Max heartbeat failures reached, returning to polling mode');
+        returnToPolling();
+      }
+    }
+  }, 1000);
+}
+
+/**
+ * Stop heartbeat timer
+ */
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    console.log('[Barnacle] Heartbeat stopped');
+  }
+}
+
+/**
+ * Stop polling timer
+ */
+function stopPollingTimer() {
+  if (connectTimer) {
+    clearTimeout(connectTimer);
+    connectTimer = null;
+  }
+}
+
+/**
+ * Stop WebSocket connection and polling
  */
 async function stopPolling() {
   isRunning = false;
-  
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  
+
+  // Stop all timers
+  stopPollingTimer();
+  stopHeartbeat();
+
+  // Close WebSocket
   if (ws) {
     ws.close(1000, 'Extension stopped');
     ws = null;
   }
 
-  // Update badge
-  chrome.action.setBadgeText({ text: 'OFF' });
-  chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
-
-  console.log('[Barnacle] Stopped WebSocket connection');
+  console.log('[Barnacle] Stopped');
 }
 
 /**
@@ -381,28 +458,17 @@ async function reportResult(result) {
     ...result
   });
 
-  // Try WebSocket first
   if (ws && ws.readyState === WebSocket.OPEN) {
     try {
       ws.send(message);
       console.log('[Barnacle] Reported result for task:', result.taskId, 'via WebSocket');
       return;
     } catch (error) {
-      console.error('[Barnacle] WebSocket send failed, falling back to HTTP:', error);
+      console.error('[Barnacle] WebSocket send failed:', error);
     }
   }
 
-  // Fallback to HTTP
-  try {
-    await fetch(`${config.serverUrl}/task/result`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(result)
-    });
-    console.log('[Barnacle] Reported result for task:', result.taskId, 'via HTTP fallback');
-  } catch (error) {
-    console.error('[Barnacle] Failed to report result:', error);
-  }
+  console.error('[Barnacle] Failed to report result: WebSocket not connected');
 }
 
 /**
@@ -422,7 +488,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const wsState = ws ? ws.readyState : WebSocket.CLOSED;
     sendResponse({
       isRunning,
-      serverUrl: config.serverUrl,
       wsUrl: getWsUrl(),
       wsConnected: wsState === WebSocket.OPEN,
       wsState: wsState,
@@ -450,43 +515,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'setConfig') {
     config = { ...config, ...message.config };
     chrome.storage.local.set({ config });
-    
-    // Reconnect WebSocket if URL changed and running
-    if (isRunning && ws) {
-      console.log('[Barnacle] Reconnecting due to config change');
-      ws.close();
-      ws = null;
-      connectWebSocket();
-    }
-    
-    sendResponse({ success: true });
-    return true;
-  }
 
-  if (message.type === 'getConfig') {
-    sendResponse({ config });
+    // Reconnect if running
+    if (isRunning) {
+      console.log('[Barnacle] Reconnecting due to config change');
+      returnToPolling();
+    }
+
+    sendResponse({ success: true });
     return true;
   }
 
   return false;
 });
 
-/**
- * Handle alarm for polling
- */
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'poll') {
-    pollForTask();
-  }
-});
-
-// Initialize on install
+// Initialize on install and auto-start polling
 chrome.runtime.onInstalled.addListener(() => {
   init();
-  console.log('[Barnacle] Extension installed');
+  console.log('[Barnacle] Extension installed, auto-starting polling');
+  startPolling();
 });
 
-// Initialize on startup
+// Initialize on startup and auto-start polling
 chrome.runtime.onStartup.addListener(() => {
   init();
+  console.log('[Barnacle] Browser started, auto-starting polling');
+  startPolling();
 });
