@@ -17,7 +17,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from server.extension_bridge import get_bridge, close_bridge
 from server.content_detector import load_model_async, get_content_detector
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastMCP):
+async def lifespan(app: MCPServer):
     """Start bridge and load model in background."""
     logger.info("Starting extension bridge...")
     try:
@@ -52,7 +52,7 @@ async def lifespan(app: FastMCP):
     await close_bridge()
 
 
-mcp = FastMCP("Barnacle", lifespan=lifespan)
+mcp = MCPServer(name="Barnacle", lifespan=lifespan)
 
 
 @mcp.tool()
