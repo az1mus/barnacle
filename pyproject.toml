@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "barnacle"
+version = "0.1.0"
+description = "Browser-extension based web fetcher MCP server with smart content detection"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "az1mus" },
+]
+keywords = ["mcp", "web-fetcher", "scraper", "chrome-extension", "onnx"]
+dependencies = [
+    "lxml>=5.0",
+    "markdownify>=1.2.2",
+    "mcp>=1.26.0",
+    "optimum[onnxruntime]>=1.20",
+    "torch>=2.0",
+    "transformers>=4.30",
+    "websockets>=11.0",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+]
+
+[project.urls]
+Homepage = "https://github.com/az1mus/barnacle"
+Repository = "https://github.com/az1mus/barnacle"
+Issues = "https://github.com/az1mus/barnacle/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[project.scripts]
+barnacle = "server.server:run"
+
+[tool.setuptools]
+packages = ["server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

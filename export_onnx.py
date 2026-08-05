@@ -4,7 +4,7 @@
 from pathlib import Path
 from optimum.exporters.onnx import main_export
 
-OUTPUT_DIR = Path("C:/workspace/barnacle/onnx-models/distilgpt2")
+OUTPUT_DIR = Path(__file__).resolve().parent / "onnx-models" / "distilgpt2"
 MODEL_ID = "distilgpt2"
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

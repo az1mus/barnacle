@@ -10,8 +10,7 @@ Barnacle MCP Server 单元测试。
 5. 内容提取器测试
 6. 错误处理和边界情况
 
-使用生产端口：
-- WebSocket: 9877 (Extension Bridge)
+使用临时端口，避免与运行中的生产服务冲突
 """
 
 import asyncio
@@ -37,10 +36,6 @@ from server.extractor import extract_content
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 生产环境端口
-WS_PORT = 9877
-WS_URL = f"ws://localhost:{WS_PORT}"
-
 
 # ============================================================================
 # 模拟 Chrome Extension WebSocket 服务器
@@ -53,7 +48,7 @@ class MockExtensionClient:
     用于连接到 ExtensionBridge WebSocket 服务器并模拟扩展行为。
     """
 
-    def __init__(self, ws_url: str = WS_URL):
+    def __init__(self, ws_url: str):
         self.ws_url = ws_url
         self.ws = None
         self.received_messages = []
@@ -144,18 +139,23 @@ class MockExtensionClient:
 # Fixtures
 # ============================================================================
 
+def _bridge_port(bridge: ExtensionBridge) -> int:
+    """获取桥接服务器的实际监听端口（使用临时端口时为系统分配）。"""
+    return bridge.server.sockets[0].getsockname()[1]
+
+
 @pytest_asyncio.fixture
 async def bridge():
-    """创建并启动 ExtensionBridge 服务器。"""
+    """创建并启动 ExtensionBridge 服务器（使用临时端口）。"""
     import server.extension_bridge as bridge_module
     bridge_module._bridge = None
-    
-    bridge_instance = ExtensionBridge(host="localhost", port=WS_PORT)
+
+    bridge_instance = ExtensionBridge(host="localhost", port=0)
     await bridge_instance.start()
-    
+
     # 设置全局实例
     bridge_module._bridge = bridge_instance
-    
+
     yield bridge_instance
     await bridge_instance.stop()
     bridge_module._bridge = None
@@ -164,7 +164,7 @@ async def bridge():
 @pytest_asyncio.fixture
 async def mock_extension(bridge):
     """启动模拟扩展客户端。"""
-    client = MockExtensionClient(ws_url=WS_URL)
+    client = MockExtensionClient(ws_url=f"ws://localhost:{_bridge_port(bridge)}")
     await client.connect()
     yield client
     await client.disconnect()
@@ -261,19 +261,21 @@ class TestExtensionBridge:
     @pytest.mark.asyncio
     async def test_bridge_reconnect(self, bridge):
         """测试重新连接。"""
+        ws_url = f"ws://localhost:{_bridge_port(bridge)}"
+
         # First connection
-        client1 = MockExtensionClient()
+        client1 = MockExtensionClient(ws_url=ws_url)
         await client1.connect()
         assert bridge.is_connected
-        
+
         await client1.disconnect()
         await asyncio.sleep(0.3)
-        
+
         # Second connection
-        client2 = MockExtensionClient()
+        client2 = MockExtensionClient(ws_url=ws_url)
         await client2.connect()
         assert bridge.is_connected
-        
+
         await client2.disconnect()
 
 
@@ -624,8 +626,8 @@ class TestIntegrationMCPClientServer:
         await asyncio.sleep(0.3)
         
         # 验证桥接服务器在运行
-        assert bridge._running
-        assert len(bridge.ws_clients) > 0
+        assert bridge.is_running
+        assert bridge.is_connected
 
 
 # ============================================================================

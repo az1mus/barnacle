@@ -98,13 +98,8 @@ function pollConnect() {
 
         if (message.type === 'task' && message.task) {
           console.log('[Barnacle] Received task:', message.task.id, 'URL:', message.task.url);
-          if (!currentTask) {
-            currentTask = message.task;
-            await executeTask(message.task);
-          } else {
-            // Queue task if one is already running
-            pendingTasks.set(message.task.id, message.task);
-          }
+          pendingTasks.set(message.task.id, message.task);
+          processQueue();
         } else if (message.type === 'pong') {
           // Heartbeat response - reset failure count
           heartbeatFailures = 0;
@@ -246,6 +241,26 @@ async function stopPolling() {
 }
 
 /**
+ * Execute queued tasks sequentially, one at a time.
+ */
+async function processQueue() {
+  if (currentTask) return;
+
+  while (pendingTasks.size > 0) {
+    const task = pendingTasks.values().next().value;
+    pendingTasks.delete(task.id);
+    currentTask = task;
+    try {
+      await executeTask(task);
+    } catch (error) {
+      console.error('[Barnacle] Task execution failed:', error);
+    } finally {
+      currentTask = null;
+    }
+  }
+}
+
+/**
  * Execute a fetch task
  */
 async function executeTask(task) {
@@ -315,11 +330,9 @@ async function executeTask(task) {
   }
   
   result.duration = Date.now() - startTime;
-  
+
   // Report result back to server
   await reportResult(result);
-  
-  currentTask = null;
 }
 
 /**

@@ -1,10 +1,12 @@
 # Barnacle
 
-基于浏览器插件的智能隐匿爬虫，通过 MCP 协议为 AI Agent 提供网页抓取能力。
+基于浏览器插件的智能网页抓取工具，通过 MCP 协议为 AI Agent 提供网页抓取能力。
+
+项目地址: <https://github.com/az1mus/barnacle>
 
 ## 概述
 
-Barnacle 是一个基于浏览器扩展的爬虫，完美绕过登录限制和反爬检测。结合 ONNX 模型的智能内容检测，自动提取页面核心内容，减少 token 消耗。
+Barnacle 是一个基于浏览器扩展的抓取工具，在用户真实浏览器中执行，继承登录状态并规避常见的反爬措施。结合 ONNX 模型的智能内容检测，自动提取页面核心内容，减少 token 消耗。
 
 ### 核心优势
 
@@ -136,7 +138,6 @@ barnacle/
 ├── extension/                 # Chrome 扩展
 │   ├── manifest.json        # 扩展配置
 │   ├── background.js        # Service Worker
-│   ├── content.js           # 内容脚本
 │   ├── popup.html/js        # 弹窗界面
 │   └── icons/               # 图标资源
 ├── onnx-models/              # ONNX 模型目录
@@ -174,3 +175,7 @@ uv run ruff check .
 - 首次抓取时需要等待扩展连接（约 2 秒）
 - 模型会在后台异步加载，不影响服务启动
 - WebSocket 服务默认监听 `ws://localhost:9877`
+
+## 免责声明
+
+本项目仅供学习与技术研究使用。请遵守目标网站的 `robots.txt`、服务条款及相关法律法规，尊重网站内容的版权。使用者因使用本项目产生的任何法律风险与责任由使用者自行承担。

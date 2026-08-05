@@ -13,7 +13,6 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Optional, List, Dict
 
-import numpy as np
 from lxml.html import HtmlElement, fromstring
 from optimum.onnxruntime import ORTModelForCausalLM
 from transformers import AutoTokenizer
@@ -40,7 +39,7 @@ async def load_model_async(model_path: str = None) -> None:
         return
 
     _model_loading = True
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _load():
         global _model, _tokenizer

@@ -56,20 +56,28 @@ def extract_content(
     return results if results else [""]
 
 
+def _xpath(root: HtmlElement, expr: str) -> List[HtmlElement]:
+    try:
+        return root.xpath(expr)
+    except Exception:
+        # Malformed selectors can produce invalid XPath; treat as no match
+        return []
+
+
 def _select(root: HtmlElement, selector: str) -> List[HtmlElement]:
     if selector.startswith('#'):
-        return root.xpath(f'//*[@id="{selector[1:]}"]')
+        return _xpath(root, f'//*[@id="{selector[1:]}"]')
     elif selector.startswith('.'):
-        return root.xpath(f'//*[contains(@class, "{selector[1:]}")]')
+        return _xpath(root, f'//*[contains(@class, "{selector[1:]}")]')
     elif '[' in selector:
         m = re.match(r'\[(\w+)="?(\w+)"?\]', selector)
         if m:
-            return root.xpath(f'//*[@{m.group(1)}="{m.group(2)}"]')
+            return _xpath(root, f'//*[@{m.group(1)}="{m.group(2)}"]')
     elif '.' in selector:
         tag, cls = selector.split('.', 1)
-        return root.xpath(f'//{tag}[contains(@class, "{cls}")]')
+        return _xpath(root, f'//{tag}[contains(@class, "{cls}")]')
     else:
-        return root.xpath(f'//{selector}')
+        return _xpath(root, f'//{selector}')
     return []
 
 

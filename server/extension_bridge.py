@@ -9,6 +9,7 @@ Listens on port 9877 and handles task communication.
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -63,11 +64,18 @@ class ExtensionBridge:
         if self._running:
             return
 
+        # Only accept connections from the Barnacle extension (chrome-extension://
+        # origin) or from non-browser clients that send no Origin header. Any
+        # webpage's JS can open a WebSocket to localhost, so this keeps random
+        # sites from reading task URLs or spoofing results.
+        allowed_origins = [None, re.compile(r"chrome-extension://.+")]
+
         try:
             self.server = await websockets.serve(
                 self._handle_connection,
                 self.host,
                 self.port,
+                origins=allowed_origins,
             )
             self._running = True
             logger.info(f"WebSocket server started on {self.ws_url}")
@@ -198,6 +206,11 @@ class ExtensionBridge:
     def is_connected(self) -> bool:
         """Check if any extension is connected."""
         return self._running and len(self.ws_clients) > 0
+
+    @property
+    def is_running(self) -> bool:
+        """Check if the WebSocket server is running."""
+        return self._running
 
 
 # Global bridge

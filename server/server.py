@@ -44,7 +44,6 @@ async def lifespan(app: FastMCP):
 
     # Load ONNX model asynchronously - non-blocking
     logger.info("Loading ONNX model in background...")
-    import asyncio
     asyncio.create_task(load_model_async())
 
     yield
@@ -88,7 +87,7 @@ async def fetch(
     try:
         bridge = await get_bridge()
         # Start bridge server if not running
-        if not bridge._running:
+        if not bridge.is_running:
             await bridge.start()
         
         if not bridge.is_connected:
