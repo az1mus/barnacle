@@ -45,7 +45,7 @@ async def load_model_async(model_path: str = None) -> None:
         global _model, _tokenizer
         logger.info(f"Loading ONNX model: {model_path}")
         tokenizer = AutoTokenizer.from_pretrained(model_path)
-        model = ORTModelForCausalLM.from_pretrained(model_path)
+        model = ORTModelForCausalLM.from_pretrained(model_path, use_cache=False)
         return model, tokenizer
 
     try:
